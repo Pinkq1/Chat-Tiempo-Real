@@ -1,92 +1,95 @@
-import express from 'express'
-import logger from 'morgan'
-import dotenv from 'dotenv'
-import { createClient } from '@libsql/client'
 
-import { Server } from 'socket.io'
-import { createServer } from 'node:http'
+import express from "express";
+import logger from "morgan";
+import { Server } from "socket.io";
+import { createServer } from "node:http";
+import { createClient } from "@libsql/client";
+import dotenv from "dotenv";
 
-dotenv.config()
-const port = process.env.PORT ?? 3000
 
-const app = express()
-const server = createServer(app)
+
+
+dotenv.config();
+
+
+const port = process.env.PORT ?? 3000;
+
+const app = express();
+const server = createServer(app);
 const io = new Server(server, {
-    connectionStateRecovery:{}
-})
+  connectionStateRecovery: {},
+});
 
 const db = createClient({
-    url: 'libsql://pro-cottonmouth-pinkq1.turso.io',
-    authToken: process.env.DB_TOKEN
-})
-
-
+  url: 'libsql://pro-cottonmouth-pinkq1.turso.io',
+  authToken: process.env.DB_TOKEN,
+});
 
 await db.execute(`
-  CREATE TABLE IF NOT EXISTS messages (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    content TEXT,
-    user TEXT,
-    timestamp TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-  )
-`)
+CREATE TABLE IF NOT EXISTS messages(
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  content TEXT,
+  user TEXT,
+  fecha DATETIME DEFAULT CURRENT_TIMESTAMP
+)
+`);
 
-io.on('connection', async (socket) => {
-  console.log('a user has connected!')
+io.on("connection", async (socket) => {
+  console.log("a user  has connected");
 
-  socket.on('disconnect', () => {
-    console.log('an user has disconnected')
-  })
+  socket.on("disconnect", () => {
+    console.log("an user has disconnected");
+  });
 
-  socket.on('chat message', async (msg) => {
+  socket.on("chat message", async (msg) => {
     let result
-    const username = socket.handshake.auth.username ?? 'anonymous'
+    const username = socket.handshake.auth.username ?? "anonymus";
     console.log({ username })
-    /* try {
-      result = await db.execute({
-        sql: 'INSERT INTO messages (content, user) VALUES (:msg, :username)',
-        args: { msg, username }
-      })
-    } catch (e) {
-      console.error(e)
-      return
-    }*/
-
     try {
-  result = await db.execute({
-    sql: 'INSERT INTO messages (content, user, timestamp) VALUES (:msg, :username, CURRENT_TIMESTAMP)',
-    args: { msg, username }
-  })
-} catch (e) {
-  console.error(e)
-  return
-}
+      result = await db.execute({
+        sql: "INSERT INTO messages (content,user,fecha) VALUES (:msg, :username, CURRENT_TIMESTAMP)",
+        args: { msg, username }
+      });
+    } catch (e) {
+      console.error(e);
+      return;
+    }
 
-    io.emit('chat message', msg, result.lastInsertRowid.toString(), username, new Date().toISOString())
-  })
 
-  if (!socket.recovered) { // <- recuperase los mensajes sin conexión
+
+    io.emit("chat message", msg, result.lastInsertRowid.toString(), username,new Date().toISOString());
+  });
+
+
+
+  if (!socket.recovered) {
     try {
       const results = await db.execute({
-        sql: 'SELECT id, content, user FROM messages WHERE id > ?',
+        sql: 'SELECT id, content, user , fecha FROM messages WHERE id > ?',
         args: [socket.handshake.auth.serverOffset ?? 0]
-      })
+      });
 
-      results.rows.forEach(row => {
-        socket.emit('chat message', row.content, row.id.toString(), row.user)
-      })
+      results.rows.forEach((row) => {
+        const fechaChile = new Date().toUTCString();
+        socket.emit("chat message", row.content, row.id.toString(), row.user, fechaChile);
+      });
     } catch (e) {
-      console.error(e)
+      console.log(e);
+      return;
     }
   }
-})
+});
 
-app.use(logger('dev'))
 
-app.get('/', (req, res) => {
-  res.sendFile(process.cwd() + '/client/index.html')
-})
+app.use(express.static('public'));
+
+app.use(logger("dev"));
+
+app.get("/", (req, res) => {
+  res.sendFile(process.cwd() + "/cliente/index.html");
+ 
+});
 
 server.listen(port, () => {
-  console.log(`Server running on port ${port}`)
-})
+  console.log(`server running on port ${port}`);
+});
