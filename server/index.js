@@ -1,19 +1,16 @@
-
 import express from "express";
 import logger from "morgan";
 import { Server } from "socket.io";
 import { createServer } from "node:http";
 import { createClient } from "@libsql/client";
+import { check, validationResult } from "express-validator";
 import dotenv from "dotenv";
-
-
-
+import session from "express-session";
+import bcrypt from "bcrypt";
 
 dotenv.config();
 
-
 const port = process.env.PORT ?? 3000;
-
 const app = express();
 const server = createServer(app);
 const io = new Server(server, {
@@ -25,53 +22,170 @@ const db = createClient({
   authToken: process.env.DB_TOKEN,
 });
 
+app.use(express.json());
+app.use(
+  session({
+    secret: "secret-key",
+    resave: false,
+    saveUninitialized: true,
+  })
+);
+
+app.post(
+  "/login",
+  [
+    check("username")
+      .notEmpty()
+      .withMessage("El nombre de usuario es obligatorio"),
+    check("password").notEmpty().withMessage("La contraseña es obligatoria"),
+  ],
+  async (req, res) => {
+    console.log("Solicitud POST a /login");
+    const { username, password } = req.body;
+
+    try {
+      const errors = validationResult(req);
+
+      if (!errors.isEmpty()) {
+        return res.status(400).json({ errors: errors.array() });
+      }
+      //console.log("Valor de username:", username);
+      const result = await db.execute({
+        sql: "SELECT user_id,username,password FROM users WHERE username = ?",
+        args: [username],
+      });
+
+      if (result.rows.length === 0) {
+        return res.status(401).json({ error: "Credenciales incorrectas" });
+      }
+
+      const storedPassword = result.rows[0].password;
+
+      if (password.trim() === storedPassword.trim()) {
+        //console.log("Contraseña válida");
+        req.session.username = username;
+        return res.status(200).json({ message: "Inicio de sesión exitoso" });
+         // Establecer la sesión
+      } else {
+        console.log("Contraseña incorrecta");
+        return res.status(401).json({ error: "Credenciales incorrectas" });
+      }
+    } catch (error) {
+      console.error("Error en la base de datos:", error);
+      return res.status(500).json({ error: "Error en la base de datos" });
+    }
+  }
+);
+
+app.post(
+  "/register",
+  [
+    check("username")
+      .notEmpty()
+      .withMessage("El nombre de usuario es obligatorio"),
+    check("password").notEmpty().withMessage("La contraseña es obligatoria"),
+  ],
+  async (req, res) => {
+    console.log("Solicitud POST a /register");
+    const { username, password } = req.body;
+
+    try {
+      const errors = validationResult(req);
+
+      if (!errors.isEmpty()) {
+        return res.status(400).json({ errors: errors.array() });
+      }
+
+      const result = await db.execute({
+        sql: "INSERT INTO users (username, password) VALUES (?, ?)",
+        args: [username, password],
+      });
+
+      return res.status(200).json({ message: "Registro exitoso" });
+    } catch (error) {
+      console.error("Error en la base de datos:", error);
+      return res.status(500).json({ error: "Error en la base de datos" });
+    }
+  }
+);
+
+
+
+await db.execute(`
+  CREATE TABLE IF NOT EXISTS users (
+    user_id INTEGER PRIMARY KEY AUTOINCREMENT,
+    username TEXT NOT NULL UNIQUE,
+    password TEXT NOT NULL
+  );
+  `);
+
 await db.execute(`
 CREATE TABLE IF NOT EXISTS messages(
   id INTEGER PRIMARY KEY AUTOINCREMENT,
   content TEXT,
-  user TEXT,
-  fecha DATETIME DEFAULT CURRENT_TIMESTAMP
-)
+  user_id_message INTEGER,
+  fecha DATETIME DEFAULT CURRENT_TIMESTAMP,
+  FOREIGN KEY (user_id_message) REFERENCES users(user_id)
+);
 `);
 
+const connectedUsers = new Map();
+// const usuarioSesion = req.session.username
 io.on("connection", async (socket) => {
+
   console.log("a user  has connected");
+  const username = socket.handshake.auth.username ?? "anonymus";
+ 
+  connectedUsers.set(socket.id, username);
+  console.log(connectedUsers.get(username))
+  // console.log(req.session.username)
+  sendConnectedUsers();
 
   socket.on("disconnect", () => {
     console.log("an user has disconnected");
+    connectedUsers.delete(socket.id);
+    sendConnectedUsers();
   });
 
   socket.on("chat message", async (msg) => {
-    let result
+    let result;
     const username = socket.handshake.auth.username ?? "anonymus";
-    console.log({ username })
+    console.log({ username });
     try {
       result = await db.execute({
-        sql: "INSERT INTO messages (content,user,fecha) VALUES (:msg, :username, CURRENT_TIMESTAMP)",
-        args: { msg, username }
+        sql: "INSERT INTO messages (content,user_id_message,fecha) VALUES (:msg,1, CURRENT_TIMESTAMP)",
+        args: { msg },
       });
     } catch (e) {
       console.error(e);
       return;
     }
 
-
-
-    io.emit("chat message", msg, result.lastInsertRowid.toString(), username,new Date().toISOString());
+    io.emit(
+      "chat message",
+      msg,
+      result.lastInsertRowid.toString(),
+      1,
+      new Date().toISOString()
+    );
   });
-
-
 
   if (!socket.recovered) {
     try {
       const results = await db.execute({
-        sql: 'SELECT id, content, user , fecha FROM messages WHERE id > ?',
-        args: [socket.handshake.auth.serverOffset ?? 0]
+        sql: "SELECT id, content, user_id_message , fecha FROM messages WHERE id > ?",
+        args: [socket.handshake.auth.serverOffset ?? 0],
       });
 
       results.rows.forEach((row) => {
         const fechaChile = new Date().toUTCString();
-        socket.emit("chat message", row.content, row.id.toString(), row.user, fechaChile);
+        socket.emit(
+          "chat message",
+          row.content,
+          row.id.toString(),
+          row.user_id_message,
+          fechaChile
+        );
       });
     } catch (e) {
       console.log(e);
@@ -80,15 +194,31 @@ io.on("connection", async (socket) => {
   }
 });
 
+function sendConnectedUsers() {
+  const usersArray = Array.from(connectedUsers.values());
+  io.emit("user-list", usersArray);
+}
 
-app.use(express.static('public'));
-
+app.use(express.static("public"));
 app.use(logger("dev"));
 
-app.get("/", (req, res) => {
-  res.sendFile(process.cwd() + "/cliente/index.html");
- 
+app.get("/chat", (req, res) => {
+  res.sendFile(process.cwd() + "/client/index.html");
 });
+
+app.get("/register", (req, res) => {
+  res.sendFile(process.cwd() + "/client/register.html");
+});
+
+app.get("/", (req, res) => {
+  
+
+  // Renderizar el HTML dependiendo de si hay un usuario en sesión o no
+
+  
+  res.sendFile(process.cwd() + "/client/login.html");
+});
+
 
 server.listen(port, () => {
   console.log(`server running on port ${port}`);

@@ -1,52 +1,62 @@
 import { io } from "https://cdn.socket.io/4.3.2/socket.io.esm.min.js";
-const getUsername = async () =>{
 
-  const username = localStorage.getItem('username')
-  if(username){
-    console.log(`user existed ${username}`)
-    return username
+//  import session from "express-session"
+const getUsername = async () => {
+
+  const username = localStorage.getItem("username");
+   console.log(username);
+   if (username) {
+     console.log(`user existed ${username}`);
+     return username;
   }
 
-  const res = await fetch('https://random-data-api.com/api/users/random_user')
-  const { username: randomUsername} = await res.json()
-  localStorage.setItem('username',randomUsername)
-  return randomUsername
-}
+//   const res = await fetch("https://random-data-api.com/api/users/random_user");
+//   const { username: randomUsername } = await res.json();
+//   localStorage.setItem("username", randomUsername);
+//   return randomUsername;
+ };
+
+
 const socket = io({
   auth: {
     username: await getUsername(),
-    serverOffset:0
-  }
-})
+    serverOffset: 0,
+  },
+});
 const form = document.getElementById("form");
 const input = document.getElementById("input");
 const messages = document.getElementById("messages");
+const userList = document.getElementById("user-list");
 
-socket.on("chat message", (msg,serverOffset,username,fecha) => {
-  const formatoHora = new Date(fecha).toLocaleString("es-CL",{
-    timeZone: "America/Santiago",
-    hour: "numeric", 
-    minute: "2-digit"
+socket.on("user-list", (users) => {
+  userList.innerHTML = "";
+  users.forEach((user) => {
+    const listItem = document.createElement("li");
+    listItem.textContent = user;
+    userList.appendChild(listItem);
   });
-  const formatoFecha = new Date(fecha).toLocaleString("es-CL",{
-    month: "short", 
-    day: "numeric" 
-  })
+});
 
-  const otro_usuario = username
+socket.on("chat message", (msg, serverOffset, user_id_message, fecha) => {
+  const formatoHora = new Date(fecha).toLocaleString("es-CL", {
+    timeZone: "America/Santiago",
+    hour: "numeric",
+    minute: "2-digit",
+  });
+  const formatoFecha = new Date(fecha).toLocaleString("es-CL", {
+    month: "short",
+    day: "numeric",
+  });
 
-
-
-    const item = `<li id="otro usuario">
-    <p">${msg}<small id="date_messages"> <span>${formatoHora}</span>  <span>${formatoFecha}</span></small> </p>
-    <small>${username}</small>
+  const item = `<li >
+    <strong id="username_name">${user_id_message}</strong>
+    <p id="message_content">${msg} </p>
+    <small id="date_messages"> <span>${formatoHora}</span>  <span>${formatoFecha}</span></small>
     </li>`;
 
-  
-  
   messages.insertAdjacentHTML("beforeend", item);
-  socket.auth.serverOffset = serverOffset
-  messages.scrollTop = messages.scrollHeight
+  socket.auth.serverOffset = serverOffset;
+  messages.scrollTop = messages.scrollHeight;
 });
 
 form.addEventListener("submit", (e) => {
