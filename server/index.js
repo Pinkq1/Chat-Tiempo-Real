@@ -8,6 +8,8 @@ import dotenv from "dotenv";
 import session from "express-session";
 import bcrypt from "bcrypt";
 
+
+
 dotenv.config();
 
 const port = process.env.PORT ?? 3000;
@@ -53,6 +55,7 @@ app.post(
       const result = await db.execute({
         sql: "SELECT user_id,username,password FROM users WHERE username = ?",
         args: [username],
+        
       });
 
       if (result.rows.length === 0) {
@@ -63,7 +66,9 @@ app.post(
 
       if (password.trim() === storedPassword.trim()) {
         //console.log("Contraseña válida");
-        req.session.username = username;
+        app.set('username', username);
+       //   req.session.username = username;
+        console.log(username);
         return res.status(200).json({ message: "Inicio de sesión exitoso" });
          // Establecer la sesión
       } else {
@@ -130,60 +135,65 @@ CREATE TABLE IF NOT EXISTS messages(
 `);
 
 const connectedUsers = new Map();
-// const usuarioSesion = req.session.username
-io.on("connection", async (socket) => {
 
-  console.log("a user  has connected");
-  const username = socket.handshake.auth.username ?? "anonymus";
- 
-  connectedUsers.set(socket.id, username);
-  console.log(connectedUsers.get(username))
-  // console.log(req.session.username)
+io.on("connection", async (socket) => {
+  console.log("Un usuario se ha conectado");
+  const username = app.get('username') || "anonymus";
+  
+connectedUsers.set(socket.id, username);
+
   sendConnectedUsers();
+  console.log(username);
 
   socket.on("disconnect", () => {
-    console.log("an user has disconnected");
+    console.log("Un usuario se ha desconectado");
     connectedUsers.delete(socket.id);
+    
     sendConnectedUsers();
   });
 
   socket.on("chat message", async (msg) => {
-    let result;
     const username = socket.handshake.auth.username ?? "anonymus";
-    console.log({ username });
+
+    // Inserta el mensaje en la base de datos
     try {
-      result = await db.execute({
-        sql: "INSERT INTO messages (content,user_id_message,fecha) VALUES (:msg,1, CURRENT_TIMESTAMP)",
-        args: { msg },
+      const result = await db.execute({
+        sql: "INSERT INTO messages (content, user_id_message, fecha) VALUES (:msg, (SELECT username FROM users WHERE user_id = :user_id_message), CURRENT_TIMESTAMP)",
+        args: { msg, user_id_message: username },
       });
+  
+      const fechaChile = new Date().toUTCString();
+      io.emit(
+        "chat message",
+        msg,
+        result.lastInsertRowid.toString(),
+        username,
+        fechaChile
+      );
     } catch (e) {
       console.error(e);
       return;
     }
-
-    io.emit(
-      "chat message",
-      msg,
-      result.lastInsertRowid.toString(),
-      1,
-      new Date().toISOString()
-    );
   });
+  // ... (código previo)
 
   if (!socket.recovered) {
     try {
       const results = await db.execute({
-        sql: "SELECT id, content, user_id_message , fecha FROM messages WHERE id > ?",
+        sql: "SELECT id, content, user_id_message, fecha FROM messages WHERE id > ?",
         args: [socket.handshake.auth.serverOffset ?? 0],
       });
 
       results.rows.forEach((row) => {
+        // Recupera el nombre de usuario a partir del user_id_message
+        const username = row.user_id_message;
+
         const fechaChile = new Date().toUTCString();
         socket.emit(
           "chat message",
           row.content,
           row.id.toString(),
-          row.user_id_message,
+          username,
           fechaChile
         );
       });
@@ -193,6 +203,8 @@ io.on("connection", async (socket) => {
     }
   }
 });
+
+
 
 function sendConnectedUsers() {
   const usersArray = Array.from(connectedUsers.values());
@@ -213,7 +225,6 @@ app.get("/register", (req, res) => {
 app.get("/", (req, res) => {
   
 
-  // Renderizar el HTML dependiendo de si hay un usuario en sesión o no
 
   
   res.sendFile(process.cwd() + "/client/login.html");

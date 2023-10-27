@@ -1,28 +1,25 @@
 import { io } from "https://cdn.socket.io/4.3.2/socket.io.esm.min.js";
 
-//  import session from "express-session"
 const getUsername = async () => {
-
+  
   const username = localStorage.getItem("username");
-   console.log(username);
-   if (username) {
-     console.log(`user existed ${username}`);
-     return username;
+  console.log(username);
+  if (username) {
+    console.log(`User exists: ${username}`);
+    return username;
   }
 
-//   const res = await fetch("https://random-data-api.com/api/users/random_user");
-//   const { username: randomUsername } = await res.json();
-//   localStorage.setItem("username", randomUsername);
-//   return randomUsername;
+
  };
 
 
-const socket = io({
+ const socket = io({
   auth: {
     username: await getUsername(),
     serverOffset: 0,
   },
 });
+
 const form = document.getElementById("form");
 const input = document.getElementById("input");
 const messages = document.getElementById("messages");
@@ -37,7 +34,7 @@ socket.on("user-list", (users) => {
   });
 });
 
-socket.on("chat message", (msg, serverOffset, user_id_message, fecha) => {
+socket.on("chat message", (msg, serverOffset, username, fecha) => {
   const formatoHora = new Date(fecha).toLocaleString("es-CL", {
     timeZone: "America/Santiago",
     hour: "numeric",
@@ -47,12 +44,14 @@ socket.on("chat message", (msg, serverOffset, user_id_message, fecha) => {
     month: "short",
     day: "numeric",
   });
-
-  const item = `<li >
-    <strong id="username_name">${user_id_message}</strong>
-    <p id="message_content">${msg} </p>
-    <small id="date_messages"> <span>${formatoHora}</span>  <span>${formatoFecha}</span></small>
-    </li>`;
+console.log(username);
+  const item = `<li>
+    <strong id="username_name">${username}</strong>
+    <p id="message_content">${msg}</p>
+    <small id="date_messages">
+      <span>${formatoHora}</span>  <span>${formatoFecha}</span>
+    </small>
+  </li>`;
 
   messages.insertAdjacentHTML("beforeend", item);
   socket.auth.serverOffset = serverOffset;
