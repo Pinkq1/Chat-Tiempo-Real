@@ -138,30 +138,49 @@ const connectedUsers = new Map();
 
 io.on("connection", async (socket) => {
   console.log("Un usuario se ha conectado");
-  const username = app.get('username') || "anonymus";
-  
-connectedUsers.set(socket.id, username);
 
-  sendConnectedUsers();
-  console.log(username);
+  socket.on("login", async (data) => {
+    const { username } = data;
+
+    // Asigna el nombre de usuario al socket
+    socket.username = username;
+
+    connectedUsers.set(socket.id, socket.username);
+    sendConnectedUsers();
+    console.log(socket.username);
+
+    socket.emit("loginResponse", {
+      status: 200,
+      message: "Inicio de sesión exitoso",
+    });
+  });
 
   socket.on("disconnect", () => {
     console.log("Un usuario se ha desconectado");
-    connectedUsers.delete(socket.id);
-    
-    sendConnectedUsers();
+
+    const username = socket.username;
+
+    if (username) {
+      connectedUsers.delete(socket.id);
+      sendConnectedUsers();
+    }
   });
 
-  socket.on("chat message", async (msg) => {
-    const username = socket.handshake.auth.username ?? "anonymus";
+  socket.on("chat message", async (data) => {
+    const { msg } = data;
+    const username = socket.username;
+
+    if (!username) {
+      console.log("error");
+      return;
+    }
 
     // Inserta el mensaje en la base de datos
     try {
-      const result = await db.execute({
+     const result = await db.execute({
         sql: "INSERT INTO messages (content, user_id_message, fecha) VALUES (:msg, (SELECT username FROM users WHERE user_id = :user_id_message), CURRENT_TIMESTAMP)",
         args: { msg, user_id_message: username },
       });
-  
       const fechaChile = new Date().toUTCString();
       io.emit(
         "chat message",
@@ -175,25 +194,21 @@ connectedUsers.set(socket.id, username);
       return;
     }
   });
-  // ... (código previo)
-
   if (!socket.recovered) {
     try {
       const results = await db.execute({
-        sql: "SELECT id, content, user_id_message, fecha FROM messages WHERE id > ?",
+        sql: "SELECT m.id, m.content, u.username, m.fecha FROM messages m INNER JOIN users u ON m.user_id_message = u.user_id WHERE m.id > ?",
         args: [socket.handshake.auth.serverOffset ?? 0],
       });
-
+  
       results.rows.forEach((row) => {
-        // Recupera el nombre de usuario a partir del user_id_message
-        const username = row.user_id_message;
-
-        const fechaChile = new Date().toUTCString();
+        const fechaChile = new Date(row.fecha).toUTCString();
+  
         socket.emit(
           "chat message",
           row.content,
           row.id.toString(),
-          username,
+          row.username, // Aquí recuperamos el nombre de usuario
           fechaChile
         );
       });
@@ -203,6 +218,7 @@ connectedUsers.set(socket.id, username);
     }
   }
 });
+
 
 
 
