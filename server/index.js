@@ -8,21 +8,22 @@ import dotenv from "dotenv";
 import session from "express-session";
 import bcrypt from "bcrypt";
 
-
-
 dotenv.config();
 
 const port = process.env.PORT ?? 3000;
 const app = express();
+
 const server = createServer(app);
 const io = new Server(server, {
   connectionStateRecovery: {},
 });
 
+
 const db = createClient({
   url: 'libsql://pro-cottonmouth-pinkq1.turso.io',
   authToken: process.env.DB_TOKEN,
 });
+
 
 app.use(express.json());
 app.use(
@@ -55,20 +56,24 @@ app.post(
       const result = await db.execute({
         sql: "SELECT user_id,username,password FROM users WHERE username = ?",
         args: [username],
-        
       });
-
       if (result.rows.length === 0) {
         return res.status(401).json({ error: "Credenciales incorrectas" });
       }
 
       const storedPassword = result.rows[0].password;
-
+      
       if (password.trim() === storedPassword.trim()) {
-        //console.log("Contraseña válida");
+
+        const storedUser_id = result.rows[0].user_id
         app.set('username', username);
-       //   req.session.username = username;
-        console.log(username);
+        app.set('user_id', storedUser_id);
+
+        req.session.username = username;
+        // console.log('mostrando con req.session ',req.session.username)
+        
+
+        console.log("entrando a la sesion ",username);
         return res.status(200).json({ message: "Inicio de sesión exitoso" });
          // Establecer la sesión
       } else {
@@ -138,77 +143,63 @@ const connectedUsers = new Map();
 
 io.on("connection", async (socket) => {
   console.log("Un usuario se ha conectado");
+  const username = app.get('username') || "anonymus";
+  const user_id = app.get('user_id')
+  console.log(user_id)
 
-  socket.on("login", async (data) => {
-    const { username } = data;
 
-    // Asigna el nombre de usuario al socket
-    socket.username = username;
-
-    connectedUsers.set(socket.id, socket.username);
-    sendConnectedUsers();
-    console.log(socket.username);
-
-    socket.emit("loginResponse", {
-      status: 200,
-      message: "Inicio de sesión exitoso",
-    });
-  });
+  connectedUsers.set(socket.id, username);
+  // console.log(connectedUsers.get(username))
+  sendConnectedUsers();
+  console.log(username);
 
   socket.on("disconnect", () => {
     console.log("Un usuario se ha desconectado");
-
-    const username = socket.username;
-
-    if (username) {
-      connectedUsers.delete(socket.id);
-      sendConnectedUsers();
-    }
+    connectedUsers.delete(socket.id);
+    sendConnectedUsers();
   });
 
-  socket.on("chat message", async (data) => {
-    const { msg } = data;
-    const username = socket.username;
+  socket.on("chat message", async (msg) => {
+    
+    let result;
 
-    if (!username) {
-      console.log("error");
-      return;
-    }
-
-    // Inserta el mensaje en la base de datos
     try {
-     const result = await db.execute({
-        sql: "INSERT INTO messages (content, user_id_message, fecha) VALUES (:msg, (SELECT username FROM users WHERE user_id = :user_id_message), CURRENT_TIMESTAMP)",
-        args: { msg, user_id_message: username },
+      
+      result = await db.execute({
+        sql: `INSERT INTO messages (content, user_id_message, fecha) VALUES (:msg,:user_id, CURRENT_TIMESTAMP)`,
+        args: { msg,user_id  },
       });
-      const fechaChile = new Date().toUTCString();
-      io.emit(
-        "chat message",
-        msg,
-        result.lastInsertRowid.toString(),
-        username,
-        fechaChile
-      );
+      
     } catch (e) {
       console.error(e);
       return;
     }
+
+    io.emit(
+      "chat message",
+      msg,
+      result.lastInsertRowid.toString(),
+      username,
+      new Date().toISOString()
+    );
+
+    
   });
+
   if (!socket.recovered) {
     try {
       const results = await db.execute({
         sql: "SELECT m.id, m.content, u.username, m.fecha FROM messages m INNER JOIN users u ON m.user_id_message = u.user_id WHERE m.id > ?",
         args: [socket.handshake.auth.serverOffset ?? 0],
       });
-  
+
       results.rows.forEach((row) => {
-        const fechaChile = new Date(row.fecha).toUTCString();
-  
+        const fechaChile = new Date().toUTCString();
         socket.emit(
           "chat message",
           row.content,
           row.id.toString(),
-          row.username, // Aquí recuperamos el nombre de usuario
+          row.username,
           fechaChile
         );
       });
@@ -219,9 +210,6 @@ io.on("connection", async (socket) => {
   }
 });
 
-
-
-
 function sendConnectedUsers() {
   const usersArray = Array.from(connectedUsers.values());
   io.emit("user-list", usersArray);
@@ -230,20 +218,24 @@ function sendConnectedUsers() {
 app.use(express.static("public"));
 app.use(logger("dev"));
 
-app.get("/chat", (req, res) => {
-  res.sendFile(process.cwd() + "/client/index.html");
+app.get("/getUsername", (req, res) => {
+  const username = req.session.username || "anonymus";
+  const user_id = app.get("user_id")
+  res.json({ username,user_id });
+});
+
+app.get("/", (req, res) => {
+  
+  res.sendFile(process.cwd() + "/client/login.html");
 });
 
 app.get("/register", (req, res) => {
   res.sendFile(process.cwd() + "/client/register.html");
 });
 
-app.get("/", (req, res) => {
-  
-
-
-  
-  res.sendFile(process.cwd() + "/client/login.html");
+app.get("/chat", (req, res) => {
+   
+  res.sendFile(process.cwd() + "/client/index.html");
 });
 
 

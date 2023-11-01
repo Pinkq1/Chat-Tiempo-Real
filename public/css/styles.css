@@ -106,3 +106,30 @@ aside {
   font-style: italic;
   margin-left: 20px;
 }
+
+.user-name {
+  font-weight: bold;
+  color: #0074D9; /* Color azul, puedes cambiarlo */
+}
+
+.custom-list-item {
+  margin: 5px ;
+  padding: 10px;
+  background-color: #444141; /* Color de fondo, puedes cambiarlo */
+  border: 1px solid #ccc;
+  list-style: none;
+  
+}
+
+.logout-button {
+  background-color: #ff4136; /* Color de fondo rojo, puedes cambiarlo */
+  color: #fff; /* Color del texto blanco */
+  border: none;
+  padding: 5px 10px;
+  cursor: pointer;
+  border-radius: 9999px;
+}
+
+.logout-button:hover {
+  background-color: #d10b00; /* Cambiar el color al pasar el mouse */
+}

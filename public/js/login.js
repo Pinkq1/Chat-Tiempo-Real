@@ -19,6 +19,7 @@ document
     const data = await response.json();
     console.log(data);
     if (response.status === 200) {
+      console.log("redireccionando al chat")
       window.location.href = "/chat";
 
       alert(data.message);

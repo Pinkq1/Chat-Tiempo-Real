@@ -19,7 +19,7 @@ document
     if (response.status === 200) {
       // El registro fue exitoso
       alert("Registro exitoso. Ahora puedes iniciar sesión.");
-      window.location.href = "/login"; // Redirige a la página de inicio de sesión
+      window.location.href = "/"; // Redirige a la página de inicio de sesión
     } else {
       // Mostrar mensajes de error en caso de problemas con el registro
       const data = await response.json();
