@@ -20,6 +20,11 @@ const getUsername = async () => {
   },
 });
 
+// logoutbutton
+document.getElementById("logoutButton").addEventListener("click", () => {
+  window.location.href = "/login.html";
+});
+
 const form = document.getElementById("form");
 const input = document.getElementById("input");
 const messages = document.getElementById("messages");
@@ -56,6 +61,11 @@ console.log(username);
   messages.insertAdjacentHTML("beforeend", item);
   socket.auth.serverOffset = serverOffset;
   messages.scrollTop = messages.scrollHeight;
+});
+
+// logout
+document.getElementById("logoutButton").addEventListener("click", () => {
+  window.location.href = "/"; 
 });
 
 form.addEventListener("submit", (e) => {

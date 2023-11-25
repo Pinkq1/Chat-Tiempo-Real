@@ -6,9 +6,10 @@ import { createClient } from "@libsql/client";
 import { check, validationResult } from "express-validator";
 import dotenv from "dotenv";
 import session from "express-session";
-import bcrypt from "bcrypt";
 
 dotenv.config();
+
+
 
 const port = process.env.PORT ?? 3000;
 const app = express();
@@ -33,6 +34,8 @@ app.use(
     saveUninitialized: true,
   })
 );
+
+
 
 app.post(
   "/login",
